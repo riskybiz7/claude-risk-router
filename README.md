@@ -3,8 +3,9 @@
 **Risk-aware model routing for Claude Code, powered by TypeSafe's Jev.**
 
 A Claude Code add-on that decides, per task, **which Claude model is allowed to do the work** and
-**whether handing it to a cheaper model is worth it**. It was built for healthcare valuation and
-transaction advisory, where the failure that matters is a plausible wrong number, not a crash.
+**whether handing it to a cheaper model is worth it**. It is built for work where the failure that
+matters is a *plausible wrong number*, not a crash: financial modeling, valuation, data analysis,
+and research that feeds a decision.
 
 It uses [TypeSafe's](https://docs.typesafe.ai) Jev model to answer seven quick yes/no-style
 questions about a task. Plain, unit-tested Python rules then turn those answers into a routing
@@ -24,6 +25,31 @@ work to cheaper subagents (Sonnet or Haiku).
 | **Latest eval (v4)** | 37 labeled prompts: tier 35/37, hand-off decision 35/37, **0 routed below label** |
 | **Routing cost** | 1 TypeSafe call per routed prompt (median 0.19 s in v4); unrouted prompts: hook exits in a median 38 ms and sends nothing |
 | **Tests** | 32 unit tests (free), plus a paid labeled eval with free offline replay |
+
+## Where it helps
+
+It pays off in any Claude Code session that mixes judgment calls with routine work, where a wrong
+number costs more than a slow answer. The router answers two questions for each task: **what is the
+lowest model that can safely do it**, and **is handing it off worth the overhead**. The examples below
+come from the labeled eval set. The wording is shortened here; the exact prompts and results are in
+[`eval_results.csv`](eval_results.csv).
+
+| Task | Lowest safe model | Who does it | Why |
+|---|---|---|---|
+| Gut-check a financial-model assumption: "Is the terminal growth rate in the DCF reasonable?" | Opus | Main session | Touches a valuation driver, so the judgment stays with the strongest model |
+| "Should this DCF use a mid-year discounting convention?" | Opus | Main session | A methodology choice that moves the answer |
+| Decide how to treat a line item that is defined differently in two years of filings | Opus | Main session | Someone has to choose the definition, and that choice drives the numbers |
+| Read 40 company documents and table each one's revenue and EBITDA with page citations | Sonnet | Sonnet subagent | Bulk reading that produces figures: worth handing off, but never to Haiku |
+| Search the web for a company's 2026 acquisitions and list each with a source link | Sonnet | Sonnet subagent | Multi-page web research, which is cheaper to hand off than to do in the main session |
+| Pull enrollment figures by state from a public data file into a CSV | Sonnet | Main session | Jev picked Haiku; the rules raised it to Sonnet because the output contains figures |
+| Download one exhibit from each of five companies' annual filings | Haiku | Haiku subagent | Bulk, mechanical, and no figures to get wrong |
+| Fix a failing unit test and re-run the suite | Sonnet | Main session | Too small for a hand-off to pay for itself |
+| List every spreadsheet in a folder with its size and date | Haiku | Main session | Same: the brief would cost more than the task |
+
+The risk questions are written for finance and analytical work. The capability and hand-off rules
+apply to any task, and the eval includes coding and file-handling prompts. These are results from one
+eval run of 37 prompts; [docs/EVALUATION.md](docs/EVALUATION.md) covers the misses and run-to-run
+noise.
 
 ## Use it
 

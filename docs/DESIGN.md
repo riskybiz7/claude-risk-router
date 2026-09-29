@@ -11,10 +11,10 @@ plan's session limits fastest. Much of a working day is not judgment work: downl
 checking links, pulling a table out of a document, fixing a script. Cheaper models (Sonnet, Haiku)
 can do much of that, at lower cost.
 
-The catch is the work itself: **healthcare valuation and transaction advisory**. In finance, the
-dangerous failure is not a crash; it is a *plausible wrong number* that flows into a model or memo.
-So the router cannot simply send "easy-looking" work to the cheapest model. It has to ask two
-separate questions, the way a deal team staffs work:
+The catch is the kind of work it is built for: **analysis where numbers drive decisions**. In
+finance, the dangerous failure is not a crash; it is a *plausible wrong number* that flows into a
+model or memo. So the router cannot simply send "easy-looking" work to the cheapest model. It has to
+ask two separate questions, the way a finance team staffs work:
 
 1. **Who is allowed to do this?** The lowest model whose mistakes would be caught rather than
    believed. That depends on risk (does a number or a judgment come out of it?) and on capability
