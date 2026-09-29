@@ -165,12 +165,3 @@ All retrieved 2026-09-28.
   completed the task correctly.
 - **Haiku 4.5's earliest possible retirement is 2026-10-15.** The `haiku` alias will need watching
   when a successor ships.
-
-## 9. Related work
-
-[gargpratyush/jev-router](https://github.com/gargpratyush/jev-router) (MIT) routes Claude Code
-requests with Jev through a local proxy that swaps the session's model per request, based on task
-complexity. This project shares no code with it, and its design choices and their reasons are
-recorded in [DECISIONS.md](DECISIONS.md). It differs in using a finance-specific risk gate, treating
-tiers as floors, handing off only bulk work, and evaluating against labeled prompts with offline
-replay.

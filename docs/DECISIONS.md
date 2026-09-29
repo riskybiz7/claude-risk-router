@@ -123,19 +123,20 @@ Every design decision, with its reason and who made it. "Owner" means the projec
 - **Decision:** Further tuning comes from real use: `routing_log.jsonl` plus overrides.
 - **Decided by:** Proposed; owner agreed.
 
-### D18. No code or wording taken from other routers
-- **Decision:** Another public Jev-based router exists. This project copies nothing from it, and
-  ideas are adapted only in this project's own design.
+### D18. Original work only
+- **Decision:** This project's code and wording are original. Nothing is copied from other
+  projects; cited sources are quoted and linked.
 - **Decided by:** Owner.
 
 ### D19. Publish as `claude-risk-router`
-- **Decision:** A GitHub repository under the MIT license, **private for now** (to be made public
-  later, as a portfolio piece). Commits use the owner's GitHub noreply address, not a personal email.
+- **Decision:** A public GitHub repository under the MIT license. It started private; on 2026-09-29
+  the owner decided to make it public, so developers can find it while Jev is new and contribute to
+  it. The owner reviews and approves every pull request. Commits use the owner's GitHub noreply
+  address, not a personal email.
   The Claude Code files the router
   depends on are copied into `claude-config/`, so the whole design is readable in one place.
   `routing_log.jsonl` is excluded (real prompts may mention clients), and the settings excerpt uses a
   placeholder path instead of the owner's home folder.
-- **Why a different name:** another public project is already called `jev-router`.
 - **Decided by:** Owner (name, license, visibility, config copies); the exclusions were proposed.
 
 ---

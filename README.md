@@ -117,12 +117,18 @@ In this folder:
 
 ## Setup
 
-1. Python 3 with the TypeSafe SDK: `pip install typesafe-sdk`.
-2. Set `TYPESAFE_API_KEY` as a **user** environment variable (on Windows: System Properties →
+1. A TypeSafe account: create one with [TypeSafe](https://docs.typesafe.ai) and add at least
+   USD 5 of credit, the minimum to use Jev (as of September 2026). Then get an API key from the
+   account.
+2. Python 3 with the TypeSafe SDK: `pip install typesafe-sdk`.
+3. Set `TYPESAFE_API_KEY` as a **user** environment variable (on Windows: System Properties →
    Environment Variables), then restart the terminal.
-3. Install the Claude Code files as described in [claude-config/README.md](claude-config/README.md):
+4. Install the Claude Code files as described in [claude-config/README.md](claude-config/README.md):
    copy the routing rules and subagents into `~/.claude/`, and merge the settings excerpt, which
    registers `hook.py` as a `UserPromptSubmit` hook.
+
+**Platforms:** tested only on Windows 11. On macOS or Linux, the hook command may need `python3`
+instead of `python`. Reports and fixes are welcome (see [Contributing](#contributing)).
 
 ## Uninstall
 
@@ -138,3 +144,19 @@ pinned to Opus.
 - The capability (1.5), bulk (0.5), and web-research (0.5) cutoffs are starting values, **not
   calibrated**.
 - Open questions for the owner: [docs/DECISIONS.md](docs/DECISIONS.md#open-questions-owner-input-welcome).
+
+## Contributing
+
+Issues and pull requests are welcome. The owner reviews and approves every pull request before it
+is merged. Good places to start:
+
+- **macOS and Linux.** The router has only been tested on Windows 11. Setup notes or fixes for other
+  platforms help.
+- **Outcome checks.** The eval checks routing decisions, not whether the subagent then finished the
+  task correctly ([Known limitations](docs/DESIGN.md#8-known-limitations)).
+- **Routing misses.** If a real task routes to the wrong tier, open an issue with the prompt (with
+  anything confidential removed) and the router's note.
+
+Before opening a pull request, run the unit tests: `python -m unittest -v`. A change to the rules
+can be re-scored for free against the saved answers in `eval_results*.csv`; a change to a question's
+wording needs a fresh, paid eval run. See [docs/EVALUATION.md](docs/EVALUATION.md).
