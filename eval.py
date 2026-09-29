@@ -1,11 +1,12 @@
 """Measure how often the router agrees with hand-labeled tiers and hand-off decisions.
 
-COSTS MONEY: one TypeSafe API call per row of eval_prompts.csv.
+Normal mode COSTS MONEY: one TypeSafe API call per row of eval_prompts.csv.
+Replay mode is FREE: re-runs apply_policy() on saved answers from eval_results*.csv.
 
-Run from this folder:  python eval.py
-Writes eval_results.csv (one row per prompt, raw Jev answers included) so the
-thresholds in router.py can be re-tuned later WITHOUT re-calling the API --
-apply_policy() can be re-run on the saved probabilities.
+Run from this folder:
+  python eval.py                            # paid eval run via TypeSafe API
+  python eval.py --replay                   # free replay of eval_results.csv
+  python eval.py --replay eval_results.csv  # free replay of a specific results CSV
 
 eval_prompts.csv columns:
   expected_tier    lowest tier allowed to do the work (haiku / sonnet / opus)
@@ -15,12 +16,13 @@ eval_prompts.csv columns:
                    the "new" scores are an honest test of those changes.
 """
 
+import argparse
 import csv
 import time
 from collections import Counter
 from pathlib import Path
 
-from router import TIERS, TRIGGERS, ask_jev
+from router import TIERS, TRIGGERS, apply_policy, ask_jev
 
 HERE = Path(__file__).parent
 
@@ -32,24 +34,106 @@ def summarize(label, results):
         return
     tier_hits = sum(r["final_tier"] == r["expected_tier"] for r in results)
     jev_hits = sum(r["jev_tier"] == r["expected_tier"] for r in results)
-    action_hits = sum(r["final_action"] == r["expected_action"] for r in results)
+    has_action = any(r.get("expected_action") for r in results)
+    action_hits = sum(r["final_action"] == r["expected_action"] for r in results) if has_action else 0
     # The failure that matters most: routed BELOW the expected tier.
     under = sum(TIERS.index(r["final_tier"]) < TIERS.index(r["expected_tier"]) for r in results)
     over = sum(TIERS.index(r["final_tier"]) > TIERS.index(r["expected_tier"]) for r in results)
-    handed_off_wrongly = sum(r["final_action"] == "delegate" and r["expected_action"] == "keep" for r in results)
-    kept_wrongly = sum(r["final_action"] == "keep" and r["expected_action"] == "delegate" for r in results)
+    handed_off_wrongly = sum(r["final_action"] == "delegate" and r["expected_action"] == "keep" for r in results) if has_action else 0
+    kept_wrongly = sum(r["final_action"] == "keep" and r["expected_action"] == "delegate" for r in results) if has_action else 0
 
     print(f"\n== {label}: {n} prompts ==")
     print(f"Final tier matches label:                     {tier_hits}/{n}")
     print(f"Jev's raw pick matches label (before policy): {jev_hits}/{n}")
     print(f"Tier BELOW label (unsafe):                    {under}")
     print(f"Tier ABOVE label (costly, not unsafe):        {over}")
-    print(f"Hand-off decision matches label:              {action_hits}/{n}")
-    print(f"  handed off, label says keep:                {handed_off_wrongly}")
-    print(f"  kept, label says hand off:                  {kept_wrongly}")
+    if has_action:
+        print(f"Hand-off decision matches label:              {action_hits}/{n}")
+        print(f"  handed off, label says keep:                {handed_off_wrongly}")
+        print(f"  kept, label says hand off:                  {kept_wrongly}")
 
 
-def main():
+def replay(csv_path):
+    """Replay saved Jev responses from a results CSV through apply_policy()."""
+    path = Path(csv_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Replay file not found: {csv_path}")
+
+    with path.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        fieldnames = set(reader.fieldnames or [])
+        rows = list(reader)
+
+    # Validate essential columns needed to score tiers and apply the base policy
+    required = {"expected_tier", "jev_tier", "jev_confidence", "produces_figure", "ambiguous_method", "valuation_driver"}
+    missing_required = required - fieldnames
+    if missing_required:
+        raise ValueError(
+            f"Cannot replay {path.name}: missing required column(s): {', '.join(sorted(missing_required))}"
+        )
+
+    missing_optional = []
+    if "capability_score" not in fieldnames:
+        missing_optional.append("capability_score (capability gate rule not applied)")
+    if "bulk_work" not in fieldnames:
+        missing_optional.append("bulk_work (bulk delegation rule not applied)")
+    if "web_research" not in fieldnames:
+        missing_optional.append("web_research (web research delegation rule not applied)")
+
+    if missing_optional:
+        print(f"Note: {path.name} is missing column(s): {'; '.join(missing_optional)}.")
+
+    results = []
+    for row in rows:
+        tier_probs = {t: float(row[f"p_{t}"]) for t in TIERS if f"p_{t}" in row and row[f"p_{t}"] != ""}
+        decision = apply_policy(
+            jev_tier=row["jev_tier"],
+            jev_confidence=float(row["jev_confidence"]),
+            trigger_probabilities={t: float(row[t]) for t in TRIGGERS},
+            tier_probabilities=tier_probs,
+            capability_score=float(row["capability_score"]) if "capability_score" in row and row["capability_score"] != "" else 0.0,
+            bulk_probability=float(row["bulk_work"]) if "bulk_work" in row and row["bulk_work"] != "" else 0.0,
+            web_research_probability=float(row["web_research"]) if "web_research" in row and row["web_research"] != "" else 0.0,
+        )
+        final_action = "delegate" if decision.delegate else "keep"
+        expected_action = row.get("expected_action", "")
+        results.append(
+            {
+                "set": row.get("set", ""),
+                "expected_tier": row["expected_tier"],
+                "final_tier": decision.tier,
+                "jev_tier": decision.jev_tier,
+                "expected_action": expected_action,
+                "final_action": final_action,
+                "task": row.get("task", ""),
+            }
+        )
+        tier_mark = "ok  " if decision.tier == row["expected_tier"] else "MISS"
+        action_mark = "ok  " if final_action == expected_action else "MISS" if expected_action else "    "
+        action_str = f"{expected_action:<8}->{final_action:<8}" if expected_action else f"->{final_action:<8}"
+        print(
+            f"tier {tier_mark} {row['expected_tier']:<6}->{decision.tier:<6} "
+            f"action {action_mark} {action_str} {row.get('task', '')[:50]}"
+        )
+
+    has_sets = any(r["set"] for r in results)
+    if has_sets:
+        new_prompts = [r for r in results if r["set"] == "new"]
+        if new_prompts:
+            summarize("NEW prompts (used for the v2 decisions)", new_prompts)
+        orig_prompts = [r for r in results if r["set"] == "original"]
+        if orig_prompts:
+            summarize("ORIGINAL prompts (used for the v1 fixes)", orig_prompts)
+    summarize(f"ALL prompts (replayed from {path.name})", results)
+
+    print("\nConfusion, tier (expected -> final):", dict(Counter((r["expected_tier"], r["final_tier"]) for r in results)))
+    if any(r["expected_action"] for r in results):
+        print("Confusion, action (expected -> final):", dict(Counter((r["expected_action"], r["final_action"]) for r in results)))
+
+    return results
+
+
+def run_eval():
     with (HERE / "eval_prompts.csv").open(encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
 
@@ -109,5 +193,29 @@ def main():
     print("Wrote eval_results.csv")
 
 
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Run or replay routing policy evaluation."
+    )
+    parser.add_argument(
+        "--replay",
+        nargs="?",
+        const="eval_results.csv",
+        default=None,
+        metavar="FILE",
+        help="Replay evaluation from saved results CSV without calling the API (default: eval_results.csv)",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    if args.replay:
+        replay(args.replay)
+    else:
+        run_eval()
+
+
 if __name__ == "__main__":
     main()
+
