@@ -56,7 +56,7 @@ noise.
 Start a prompt with `route:` (any capitalization):
 
 ```
-route: download the FY2023-FY2025 10-Ks for HCA and Tenet
+route: Download the FY2023-FY2025 10-K PDFs for HCA and Tenet into the filings folder
 ```
 
 Not `!route`: in the Claude Code terminal, a leading `!` switches to shell mode, so the prompt would
@@ -66,12 +66,16 @@ The hook adds a note like this to Claude's context:
 
 ```
 [Jev router] Route: HAIKU. Delegate the execution to the `tier-haiku` subagent (latest haiku): this is bulk work, where handing off saves usage.
-  Jev pick: haiku (confidence 0.91; haiku 0.93, sonnet 0.06, opus 0.01)
-  Triggers: produces_figure 0.04, ambiguous_method 0.03, valuation_driver 0.01
-  Hand-off signals: bulk_work 0.88, web_research 0.05, capability 0.95 of 2
+  Jev pick: haiku (confidence 0.99; haiku 0.99, sonnet 0.01, opus 0.00)
+  Triggers: produces_figure 0.12, ambiguous_method 0.01, valuation_driver 0.06
+  Hand-off signals: bulk_work 0.62, web_research 0.42, capability 1.17 of 2
+  Policy: bulk work 0.62 -> hand off to tier-haiku
+  This is advisory. Apply route.md: escalate further if the work turns out riskier than it looks; never route below this tier.
 ```
 
-(The numbers above are illustrative, not real output.)
+These are Jev's real scores for this prompt from the v4 eval run (the first row of
+[`eval_results.csv`](eval_results.csv)). Scores vary slightly from run to run; see
+[docs/EVALUATION.md](docs/EVALUATION.md).
 
 **Override:** put a tier in brackets right after the prefix to choose the model yourself:
 
