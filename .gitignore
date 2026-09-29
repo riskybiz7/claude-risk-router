@@ -1,0 +1,9 @@
+# Real routed prompts: local only (future entries may mention clients or deals)
+routing_log.jsonl
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Secrets, if ever stored locally
+.env

@@ -1,0 +1,21 @@
+{
+  "model": "opus",
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "medium"
+    }
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"<ABSOLUTE-PATH-TO-REPO>/hook.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

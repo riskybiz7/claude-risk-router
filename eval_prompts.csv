@@ -1,0 +1,38 @@
+expected_tier,expected_action,set,task,label_basis,review_note
+haiku,delegate,original,Download the FY2023-FY2025 10-K PDFs for HCA and Tenet into the filings folder,route.md haiku: file downloads,Bulk: each of 6 filings needs its own lookup (borderline: small batch)
+haiku,keep,original,List every .xlsx file under Projects/physician-benchmarks with its size and last-modified date,route.md haiku: file inventory,
+haiku,keep,original,Grep the market-catalyst-calendar folder for every mention of FOMC and return the file paths and matching lines,route.md haiku: grep sweep returning raw excerpts,
+haiku,keep,original,Run the existing build_calendar.py script without changing it and return its stdout,route.md haiku: run an existing unmodified script,
+haiku,keep,original,Compute SHA-256 checksums for every file in the downloads folder and write them to manifest.csv,route.md haiku: checksums and manifest rows,
+haiku,keep,original,Copy the 2025 PDFs into the archive folder and add one manifest row per file,route.md haiku: archive population,
+haiku,keep,original,Rename the exported CSVs in exports/ to the YYYY-MM-DD_source.csv convention,route.md haiku: mechanical file work (closest match),
+sonnet,keep,original,Add a source-URL column to build_calendar.py then rebuild the calendar and confirm it runs cleanly,route.md sonnet: script edit plus rebuild/verify loop,
+sonnet,keep,original,Build the HTML dashboard exactly as specified in the approved spec.md,route.md sonnet: artifact from a settled spec,
+sonnet,delegate,original,Find the CMS press releases on the CY2027 proposed physician fee schedule and return their links and publication dates,route.md sonnet: sourcing with citations,Bulk: web research across several pages (borderline)
+sonnet,keep,original,Write up today's session log; the decisions are already recorded in decisions.md,route.md sonnet: write-up once the outcome is decided,
+sonnet,keep,original,Convert the notes in notes/ into a Word document using the existing firm template,route.md sonnet: artifact from a settled spec (closest match),
+sonnet,keep,original,Fix the failing unit test in test_parser.py and re-run the suite,route.md sonnet: script edit plus rebuild/verify loop,
+opus,keep,original,Choose the discount rate for the ambulatory surgery center valuation and justify the size premium,route.md opus + trigger 3 (discount rate),
+opus,keep,original,Decide whether to normalize the physician compensation add-back in adjusted EBITDA,route.md opus: judgment that sets the answer,
+opus,keep,original,Review this fact-check report and decide whether the memo is ready to send to the client,route.md opus: final read of a verification report,
+opus,keep,original,Plan the approach for a precedent-transactions analysis of behavioral health deals,route.md opus: planning is never delegated,
+opus,keep,original,Is the terminal growth rate in the DCF reasonable given the shift in payer mix?,route.md opus + trigger 3 (valuation driver),
+opus,keep,original,Reconcile quality-of-earnings EBITDA to CIM EBITDA and tell me which one to use,route.md opus: deciding which answer is right,
+opus,keep,original,Other operating income is defined differently in the 2024 and 2025 filings; decide how to treat it,route.md opus + trigger 2 (ambiguous line-item definition),
+haiku,keep,new,"On SEC EDGAR, open HCA's most recent 10-K filing index and download Exhibit 21 (subsidiaries of the registrant) into the filings folder",haiku (tentative): efficiency-first per Anthropic's model guide; capability to be confirmed by a real trial,Tests navigating to a part of EDGAR not yet explored (filing index -> exhibit) | Single download stays in main loop under the bulk rule; row 36 tests Haiku on EDGAR instead
+haiku,keep,new,Pull Tenet's latest 10-Q from SEC EDGAR into the filings folder,haiku: file download from a known source,
+haiku,keep,new,Unzip the CMS provider data file in downloads/ and list the files inside,haiku: mechanical file work + inventory,
+haiku,keep,new,Check whether every link in sources.md still loads and list any that return errors,haiku: mechanical check returning raw results,"Borderline: one script checks every link, so keep"
+haiku,keep,new,Save a dated copy of routing_log.jsonl in the archive folder,haiku: archive population,
+sonnet,delegate,new,Find where CMS publishes hospital price transparency enforcement actions and download the latest list,"sonnet: location unknown, open-ended navigation (capability level 2)",Tests the new capability check: Haiku-type task made harder by navigation | Bulk: open-ended search that reads many pages (borderline)
+sonnet,delegate,new,Search for acquisitions announced by U.S. Physical Therapy in 2026 and list each with a source link,sonnet: sourcing and research with citations,Bulk: research across many sources
+sonnet,keep,new,Pull Medicare Advantage enrollment by state from the latest CMS monthly enrollment file into a CSV,sonnet: Haiku floor -- output contains figures that reach analysis,Tests produces_figure on a download-looking task
+opus,keep,new,"Update the comps table with Q2 2026 EBITDA from the new 10-Qs, citing the source for each figure","opus + trigger 3: comps are a valuation driver (owner, 2026-09-28: comps sanity-check the model's EBITDA margin assumptions)",Relabeled from sonnet/delegate after owner's definition of valuation driver
+sonnet,keep,new,Summarize the physician payment chapter of the June 2026 MedPAC report in one page with page citations,sonnet: write-up with citations; quoted figures,"Borderline: one chapter fits in one session, so keep"
+sonnet,keep,new,Restyle the charts in memo.docx to match the firm style guide,sonnet: artifact edit against a settled spec,
+opus,keep,new,Pick the peer set for the home health comps and explain which companies to exclude,opus: judgment that sets the answer,
+opus,keep,new,Should this DCF use a mid-year discounting convention?,opus + trigger 2: methodology choice,Tests the rewritten ambiguity check on a genuine methodology question
+opus,keep,new,Decide whether the proposed CMS site-neutral payment policy should be reflected in the HOPD revenue forecast,opus + trigger 3: assumption that sets the answer,
+opus,keep,new,Tell me whether the new MedPAC physician payment recommendations change our view on the practice valuation,opus: judgment; a wrong answer costs credibility,"Pairs with the MedPAC summary row: same source, different tier"
+haiku,delegate,new,"For HCA, Tenet, Community Health Systems, Universal Health Services, and Ardent Health, open each company's most recent 10-K filing index on SEC EDGAR and download Exhibit 21 (subsidiaries of the registrant) into the filings folder",haiku: downloads along a predictable path (capability level 1); bulk: five separate lookups,"Tests Haiku navigating an unexplored part of EDGAR, as a hand-off"
+sonnet,delegate,new,Read the 40 CIMs in deals/2026 and put each target's reported revenue and EBITDA into a table with page citations,sonnet: Haiku floor (figures reach analysis); bulk: 40 documents read separately,Tests bulk reading that produces figures
