@@ -3,14 +3,17 @@
 Run from this folder:  python -m unittest -v
 """
 
+import csv
 import io
 import json
 import sys
+import tempfile
 import unittest
 from contextlib import ExitStack
 from itertools import product
 from unittest import mock
 
+from eval import replay
 from router import TIERS, apply_override, apply_policy, format_note
 
 QUIET = {"produces_figure": 0.1, "ambiguous_method": 0.1, "valuation_driver": 0.1}
@@ -234,5 +237,84 @@ class HookTests(unittest.TestCase):
         self.assertIn("tier-opus", out)
 
 
+class ReplayTests(unittest.TestCase):
+    def test_replay_fixture_csv(self):
+        fixture_rows = [
+            {
+                "set": "original",
+                "expected_tier": "sonnet",
+                "jev_tier": "haiku",
+                "expected_action": "delegate",
+                "jev_confidence": "0.95",
+                "produces_figure": "0.85",
+                "ambiguous_method": "0.10",
+                "valuation_driver": "0.10",
+                "capability_score": "0.50",
+                "bulk_work": "0.80",
+                "web_research": "0.10",
+                "task": "Extract financial table from filings",
+            },
+            {
+                "set": "new",
+                "expected_tier": "opus",
+                "jev_tier": "opus",
+                "expected_action": "keep",
+                "jev_confidence": "0.99",
+                "produces_figure": "0.10",
+                "ambiguous_method": "0.10",
+                "valuation_driver": "0.80",
+                "capability_score": "1.00",
+                "bulk_work": "0.10",
+                "web_research": "0.10",
+                "task": "Decide on terminal growth rate",
+            },
+        ]
+        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, newline="", encoding="utf-8") as tmp:
+            writer = csv.DictWriter(tmp, fieldnames=list(fixture_rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(fixture_rows)
+            tmp_path = tmp.name
+
+        try:
+            with mock.patch("sys.stdout", new=io.StringIO()):
+                results = replay(tmp_path)
+            self.assertEqual(len(results), 2)
+            # Row 0: haiku boosted to sonnet because produces_figure, delegated because bulk_work
+            self.assertEqual(results[0]["final_tier"], "sonnet")
+            self.assertEqual(results[0]["final_action"], "delegate")
+            # Row 1: opus kept
+            self.assertEqual(results[1]["final_tier"], "opus")
+            self.assertEqual(results[1]["final_action"], "keep")
+        finally:
+            import os
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    def test_replay_missing_required_column_raises(self):
+        incomplete_rows = [{"expected_tier": "sonnet", "task": "something"}]
+        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, newline="", encoding="utf-8") as tmp:
+            writer = csv.DictWriter(tmp, fieldnames=list(incomplete_rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(incomplete_rows)
+            tmp_path = tmp.name
+
+        try:
+            with self.assertRaises(ValueError):
+                replay(tmp_path)
+        finally:
+            import os
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    def test_replay_missing_file_raises(self):
+        with self.assertRaises(FileNotFoundError):
+            replay("non_existent_results_file.csv")
+
+
 if __name__ == "__main__":
     unittest.main()
+
