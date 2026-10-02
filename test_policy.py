@@ -237,78 +237,98 @@ class HookTests(unittest.TestCase):
         self.assertIn("tier-opus", out)
 
 
-class ReplayTests(unittest.TestCase):
-    def test_replay_fixture_csv(self):
-        fixture_rows = [
-            {
-                "set": "original",
-                "expected_tier": "sonnet",
-                "jev_tier": "haiku",
-                "expected_action": "delegate",
-                "jev_confidence": "0.95",
-                "produces_figure": "0.85",
-                "ambiguous_method": "0.10",
-                "valuation_driver": "0.10",
-                "capability_score": "0.50",
-                "bulk_work": "0.80",
-                "web_research": "0.10",
-                "task": "Extract financial table from filings",
-            },
-            {
-                "set": "new",
-                "expected_tier": "opus",
-                "jev_tier": "opus",
-                "expected_action": "keep",
-                "jev_confidence": "0.99",
-                "produces_figure": "0.10",
-                "ambiguous_method": "0.10",
-                "valuation_driver": "0.80",
-                "capability_score": "1.00",
-                "bulk_work": "0.10",
-                "web_research": "0.10",
-                "task": "Decide on terminal growth rate",
-            },
-        ]
-        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, newline="", encoding="utf-8") as tmp:
-            writer = csv.DictWriter(tmp, fieldnames=list(fixture_rows[0].keys()))
-            writer.writeheader()
-            writer.writerows(fixture_rows)
-            tmp_path = tmp.name
+# Made-up saved-run rows for the replay tests (not real Jev answers). Each one
+# exercises one rule; "saved_*" is what the saved run decided at the time.
+QUIET_RUN = {"jev_confidence": "0.90", "produces_figure": "0.10", "ambiguous_method": "0.10",
+             "valuation_driver": "0.10", "capability_score": "0.50", "bulk_work": "0.10", "web_research": "0.10"}
+REPLAY_FIXTURE = [
+    # Haiku hard floor: a figure lifts Haiku to Sonnet; bulk work hands it off.
+    {**QUIET_RUN, "task": "Made-up: extract a table of figures", "jev_tier": "haiku",
+     "jev_confidence": "0.95", "produces_figure": "0.85", "bulk_work": "0.80",
+     "final_tier": "sonnet", "final_action": "delegate"},
+    # Escalation trigger at Opus: stays Opus, Opus work is never handed off.
+    {**QUIET_RUN, "task": "Made-up: choose a valuation driver", "jev_tier": "opus",
+     "jev_confidence": "0.99", "valuation_driver": "0.80", "capability_score": "1.00",
+     "final_tier": "opus", "final_action": "keep"},
+    # Low tier confidence bumps Haiku up one tier.
+    {**QUIET_RUN, "task": "Made-up: unclear small task", "jev_tier": "haiku",
+     "jev_confidence": "0.40", "final_tier": "sonnet", "final_action": "keep"},
+    # Changed decision: web research now hands it off; the saved run kept it.
+    {**QUIET_RUN, "task": "Made-up: research across several sites", "jev_tier": "sonnet",
+     "web_research": "0.70", "final_tier": "sonnet", "final_action": "keep"},
+]
+REPLAY_LABELS = [
+    {"task": "Made-up: extract a table of figures", "expected_tier": "sonnet", "expected_action": "delegate", "set": "original"},
+    {"task": "Made-up: choose a valuation driver", "expected_tier": "opus", "expected_action": "keep", "set": "new"},
+    {"task": "Made-up: unclear small task", "expected_tier": "sonnet", "expected_action": "keep", "set": "new"},
+    {"task": "Made-up: research across several sites", "expected_tier": "sonnet", "expected_action": "delegate", "set": "new"},
+]
 
-        try:
-            with mock.patch("sys.stdout", new=io.StringIO()):
-                results = replay(tmp_path)
-            self.assertEqual(len(results), 2)
-            # Row 0: haiku boosted to sonnet because produces_figure, delegated because bulk_work
-            self.assertEqual(results[0]["final_tier"], "sonnet")
-            self.assertEqual(results[0]["final_action"], "delegate")
-            # Row 1: opus kept
-            self.assertEqual(results[1]["final_tier"], "opus")
-            self.assertEqual(results[1]["final_action"], "keep")
-        finally:
-            import os
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+
+class ReplayTests(unittest.TestCase):
+    """eval.py --replay: re-scores saved runs for free. Uses temporary files only."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = tmp.name
+        self.labels = self.write_csv("labels.csv", REPLAY_LABELS)
+
+    def write_csv(self, name, rows):
+        path = f"{self.dir}/{name}"
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+        return path
+
+    def run_replay(self, rows):
+        out = io.StringIO()
+        with mock.patch("sys.stdout", new=out):
+            results = replay(self.write_csv("run.csv", rows), self.labels)
+        return results, out.getvalue()
+
+    def test_replay_fixture_csv(self):
+        results, _ = self.run_replay(REPLAY_FIXTURE)
+        decisions = [(r["final_tier"], r["final_action"]) for r in results]
+        self.assertEqual(
+            decisions,
+            [("sonnet", "delegate"), ("opus", "keep"), ("sonnet", "keep"), ("sonnet", "delegate")],
+        )
+
+    def test_replay_grades_against_current_labels(self):
+        results, _ = self.run_replay(REPLAY_FIXTURE)
+        self.assertEqual([r["expected_action"] for r in results], ["delegate", "keep", "keep", "delegate"])
+        self.assertEqual([r["set"] for r in results], ["original", "new", "new", "new"])
+
+    def test_replay_reports_changed_decisions(self):
+        _, out = self.run_replay(REPLAY_FIXTURE)
+        self.assertIn("Changed vs. the saved run: 1 of 4 prompts", out)
+        self.assertIn("action keep    ->delegate Made-up: research across several sites", out)
+
+    def test_replay_never_calls_jev(self):
+        with mock.patch("eval.ask_jev", side_effect=AssertionError("replay must not call Jev")),                 mock.patch("router.TypeSafeClient", side_effect=AssertionError("replay must not call TypeSafe")):
+            results, _ = self.run_replay(REPLAY_FIXTURE)
+        self.assertEqual(len(results), 4)
 
     def test_replay_missing_required_column_raises(self):
         incomplete_rows = [{"expected_tier": "sonnet", "task": "something"}]
-        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, newline="", encoding="utf-8") as tmp:
-            writer = csv.DictWriter(tmp, fieldnames=list(incomplete_rows[0].keys()))
-            writer.writeheader()
-            writer.writerows(incomplete_rows)
-            tmp_path = tmp.name
+        with self.assertRaises(ValueError):
+            replay(self.write_csv("run.csv", incomplete_rows), self.labels)
 
-        try:
-            with self.assertRaises(ValueError):
-                replay(tmp_path)
-        finally:
-            import os
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+    def test_replay_rejects_run_missing_a_rule_input(self):
+        # Like eval_results_v2/v3.csv, which predate the web-research question.
+        older = [{k: v for k, v in row.items() if k != "web_research"} for row in REPLAY_FIXTURE]
+        with self.assertRaises(ValueError) as ctx:
+            replay(self.write_csv("run.csv", older), self.labels)
+        self.assertIn("web_research (needed for the hand-off rule)", str(ctx.exception))
+
+    def test_replay_rejects_prompt_without_label(self):
+        rows = REPLAY_FIXTURE + [{**QUIET_RUN, "task": "Made-up: not in the labels file",
+                                  "jev_tier": "haiku", "final_tier": "haiku", "final_action": "keep"}]
+        with self.assertRaises(ValueError) as ctx:
+            replay(self.write_csv("run.csv", rows), self.labels)
+        self.assertIn("Made-up: not in the labels file", str(ctx.exception))
 
     def test_replay_missing_file_raises(self):
         with self.assertRaises(FileNotFoundError):
@@ -317,4 +337,3 @@ class ReplayTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

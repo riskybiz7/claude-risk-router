@@ -30,6 +30,18 @@ Claude drafted the labels following the owner's rules, and the owner reviewed th
 re-scored against those saved answers without new API calls. Only a change to a question's wording
 needs a fresh run.
 
+```
+python eval.py --replay                       # re-score eval_results.csv (the latest run)
+python eval.py --replay path/to/saved_run.csv # or another saved run
+```
+
+Replay grades against the current labels in `eval_prompts.csv`, writes no files, and ends with a
+"Changed vs. the saved run" list: every prompt whose tier or hand-off decision differs from what
+that run decided. It refuses a file that lacks an answer the current rules use, rather than
+treating the missing answer as 0, which would switch a rule off and give scores that look
+comparable but aren't. Today only `eval_results.csv` (v4) has every answer; v1–v3 predate the
+capability, bulk-work or web-research questions.
+
 ## Results
 
 Computed from each run's saved results file, scored against the labels stored in that run:

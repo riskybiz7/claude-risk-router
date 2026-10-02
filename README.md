@@ -112,8 +112,8 @@ In this folder:
 |---|---|
 | `router.py` | The seven questions, the policy rules, the override, and the Jev API call |
 | `hook.py` | The Claude Code `UserPromptSubmit` hook: prefix, override tag, fail-safe, logging |
-| `test_policy.py` | 35 unit tests: `python -m unittest -v` (free) |
-| `eval.py`, `eval_prompts.csv` | Labeled eval: `python eval.py` (**paid**: one TypeSafe call per prompt), or `python eval.py --replay` (free offline replay) |
+| `test_policy.py` | 40 unit tests: `python -m unittest -v` (free) |
+| `eval.py`, `eval_prompts.csv` | Labeled eval: `python eval.py` (**paid**: one TypeSafe call per prompt), or `python eval.py --replay` (**free**: re-scores the saved run with the current rules) |
 | `eval_results*.csv` | Saved raw answers from runs v1–v4, for comparison and free replay |
 | `routing_log.jsonl` | Every real routed prompt, with Jev's raw answers and any override (local only) |
 | `docs/` | Design, decision log, evaluation |
