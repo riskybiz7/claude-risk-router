@@ -1,7 +1,10 @@
 """Measure how often the router agrees with hand-labeled tiers and hand-off decisions.
 
 Normal mode COSTS MONEY: one TypeSafe API call per row of eval_prompts.csv.
-Replay mode is FREE: re-runs apply_policy() on saved answers from eval_results*.csv.
+Replay mode is FREE: re-runs apply_policy() on saved answers from a results CSV,
+grades against the current labels in eval_prompts.csv, writes no files, and lists
+the prompts whose decision changed. Only runs saved with every answer the current
+rules use can be replayed (today: eval_results.csv, the v4 run).
 
 Run from this folder:
   python eval.py                            # paid eval run via TypeSafe API
@@ -53,8 +56,59 @@ def summarize(label, results):
         print(f"  kept, label says hand off:                  {kept_wrongly}")
 
 
-def replay(csv_path):
-    """Replay saved Jev responses from a results CSV through apply_policy()."""
+def print_row(r):
+    """Print one prompt's result line (same format for paid runs and replays)."""
+    tier_mark = "ok  " if r["final_tier"] == r["expected_tier"] else "MISS"
+    action_mark = "ok  " if r["final_action"] == r["expected_action"] else "MISS"
+    print(
+        f"tier {tier_mark} {r['expected_tier']:<6}->{r['final_tier']:<6} "
+        f"action {action_mark} {r['expected_action']:<8}->{r['final_action']:<8} {r['task'][:50]}"
+    )
+
+
+def print_report(results, all_label):
+    """Print the score blocks and confusion counts (same for paid runs and replays)."""
+    # Both sets have now informed policy decisions (original: v1 fixes; new: v2
+    # decisions), so neither is a held-out test any more. Real routed prompts in
+    # routing_log.jsonl are the honest test from here on.
+    summarize("NEW prompts (used for the v2 decisions)", [r for r in results if r["set"] == "new"])
+    summarize("ORIGINAL prompts (used for the v1 fixes)", [r for r in results if r["set"] == "original"])
+    summarize(all_label, results)
+
+    print("\nConfusion, tier (expected -> final):", dict(Counter((r["expected_tier"], r["final_tier"]) for r in results)))
+    print("Confusion, action (expected -> final):", dict(Counter((r["expected_action"], r["final_action"]) for r in results)))
+
+
+def load_labels(labels_path):
+    """Read eval_prompts.csv into a lookup keyed on the exact task text (like a VLOOKUP)."""
+    with Path(labels_path).open(encoding="utf-8") as f:
+        return {row["task"]: row for row in csv.DictReader(f)}
+
+
+# Every column apply_policy() needs from a saved run, and the rule that uses it.
+# A file missing any of them is rejected: treating a missing answer as 0 would
+# switch the rule off silently and give scores that look comparable but are not.
+REPLAY_COLUMNS = {
+    "task": "matching the prompt to its label in eval_prompts.csv",
+    "jev_tier": "the starting tier",
+    "jev_confidence": "the low-confidence escalation rule",
+    "produces_figure": "the Haiku hard floor",
+    "ambiguous_method": "the escalation rule",
+    "valuation_driver": "the escalation rule",
+    "capability_score": "the capability gate",
+    "bulk_work": "the hand-off rule",
+    "web_research": "the hand-off rule",
+    "final_tier": 'the "Changed vs. the saved run" report',
+    "final_action": 'the "Changed vs. the saved run" report',
+}
+
+
+def replay(csv_path, labels_path=HERE / "eval_prompts.csv"):
+    """Re-score a saved run with the current rules. FREE: no TypeSafe calls, writes no files.
+
+    Uses Jev's saved answers from csv_path and the CURRENT labels from labels_path,
+    and reports which prompts would now get a different tier or hand-off decision.
+    """
     path = Path(csv_path)
     if not path.is_file():
         raise FileNotFoundError(f"Replay file not found: {csv_path}")
@@ -64,71 +118,64 @@ def replay(csv_path):
         fieldnames = set(reader.fieldnames or [])
         rows = list(reader)
 
-    # Validate essential columns needed to score tiers and apply the base policy
-    required = {"expected_tier", "jev_tier", "jev_confidence", "produces_figure", "ambiguous_method", "valuation_driver"}
-    missing_required = required - fieldnames
-    if missing_required:
+    missing = [col for col in REPLAY_COLUMNS if col not in fieldnames]
+    if missing:
+        details = "; ".join(f"{col} (needed for {REPLAY_COLUMNS[col]})" for col in missing)
         raise ValueError(
-            f"Cannot replay {path.name}: missing required column(s): {', '.join(sorted(missing_required))}"
+            f"Cannot replay {path.name}: missing column(s): {details}. "
+            f"Only runs saved with every answer the current rules use can be replayed."
         )
 
-    missing_optional = []
-    if "capability_score" not in fieldnames:
-        missing_optional.append("capability_score (capability gate rule not applied)")
-    if "bulk_work" not in fieldnames:
-        missing_optional.append("bulk_work (bulk delegation rule not applied)")
-    if "web_research" not in fieldnames:
-        missing_optional.append("web_research (web research delegation rule not applied)")
-
-    if missing_optional:
-        print(f"Note: {path.name} is missing column(s): {'; '.join(missing_optional)}.")
+    labels = load_labels(labels_path)
+    unlabeled = [row["task"] for row in rows if row["task"] not in labels]
+    if unlabeled:
+        raise ValueError(
+            f"Cannot replay {path.name}: {len(unlabeled)} prompt(s) not found in "
+            f"{Path(labels_path).name}, e.g. {unlabeled[0][:80]!r}"
+        )
 
     results = []
     for row in rows:
-        tier_probs = {t: float(row[f"p_{t}"]) for t in TIERS if f"p_{t}" in row and row[f"p_{t}"] != ""}
+        label = labels[row["task"]]
         decision = apply_policy(
             jev_tier=row["jev_tier"],
             jev_confidence=float(row["jev_confidence"]),
             trigger_probabilities={t: float(row[t]) for t in TRIGGERS},
-            tier_probabilities=tier_probs,
-            capability_score=float(row["capability_score"]) if "capability_score" in row and row["capability_score"] != "" else 0.0,
-            bulk_probability=float(row["bulk_work"]) if "bulk_work" in row and row["bulk_work"] != "" else 0.0,
-            web_research_probability=float(row["web_research"]) if "web_research" in row and row["web_research"] != "" else 0.0,
+            tier_probabilities={t: float(row[f"p_{t}"]) for t in TIERS if row.get(f"p_{t}")},
+            capability_score=float(row["capability_score"]),
+            bulk_probability=float(row["bulk_work"]),
+            web_research_probability=float(row["web_research"]),
         )
-        final_action = "delegate" if decision.delegate else "keep"
-        expected_action = row.get("expected_action", "")
-        results.append(
-            {
-                "set": row.get("set", ""),
-                "expected_tier": row["expected_tier"],
-                "final_tier": decision.tier,
-                "jev_tier": decision.jev_tier,
-                "expected_action": expected_action,
-                "final_action": final_action,
-                "task": row.get("task", ""),
-            }
-        )
-        tier_mark = "ok  " if decision.tier == row["expected_tier"] else "MISS"
-        action_mark = "ok  " if final_action == expected_action else "MISS" if expected_action else "    "
-        action_str = f"{expected_action:<8}->{final_action:<8}" if expected_action else f"->{final_action:<8}"
+        result = {
+            "set": label["set"],
+            "expected_tier": label["expected_tier"],
+            "final_tier": decision.tier,
+            "jev_tier": decision.jev_tier,
+            "expected_action": label["expected_action"],
+            "final_action": "delegate" if decision.delegate else "keep",
+            "saved_tier": row["final_tier"],
+            "saved_action": row["final_action"],
+            "task": row["task"],
+        }
+        results.append(result)
+        print_row(result)
+
+    print_report(results, f"ALL prompts (replayed from {path.name})")
+
+    not_scored = len(labels) - len(results)
+    if not_scored > 0:
+        print(f"\nNote: {not_scored} prompt(s) in {Path(labels_path).name} are not in {path.name} and were not scored.")
+
+    changed = [
+        r for r in results
+        if (r["final_tier"], r["final_action"]) != (r["saved_tier"], r["saved_action"])
+    ]
+    print(f"\n== Changed vs. the saved run: {len(changed)} of {len(results)} prompts ==")
+    for r in changed:
         print(
-            f"tier {tier_mark} {row['expected_tier']:<6}->{decision.tier:<6} "
-            f"action {action_mark} {action_str} {row.get('task', '')[:50]}"
+            f"tier {r['saved_tier']:<6}->{r['final_tier']:<6} "
+            f"action {r['saved_action']:<8}->{r['final_action']:<8} {r['task'][:50]}"
         )
-
-    has_sets = any(r["set"] for r in results)
-    if has_sets:
-        new_prompts = [r for r in results if r["set"] == "new"]
-        if new_prompts:
-            summarize("NEW prompts (used for the v2 decisions)", new_prompts)
-        orig_prompts = [r for r in results if r["set"] == "original"]
-        if orig_prompts:
-            summarize("ORIGINAL prompts (used for the v1 fixes)", orig_prompts)
-    summarize(f"ALL prompts (replayed from {path.name})", results)
-
-    print("\nConfusion, tier (expected -> final):", dict(Counter((r["expected_tier"], r["final_tier"]) for r in results)))
-    if any(r["expected_action"] for r in results):
-        print("Confusion, action (expected -> final):", dict(Counter((r["expected_action"], r["final_action"]) for r in results)))
 
     return results
 
@@ -164,27 +211,14 @@ def run_eval():
                 "task": row["task"],
             }
         )
-        tier_mark = "ok  " if decision.tier == row["expected_tier"] else "MISS"
-        action_mark = "ok  " if final_action == row["expected_action"] else "MISS"
-        print(
-            f"tier {tier_mark} {row['expected_tier']:<6}->{decision.tier:<6} "
-            f"action {action_mark} {row['expected_action']:<8}->{final_action:<8} {row['task'][:50]}"
-        )
+        print_row(results[-1])
 
     with (HERE / "eval_results.csv").open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(results[0]))
         writer.writeheader()
         writer.writerows(results)
 
-    # Both sets have now informed policy decisions (original: v1 fixes; new: v2
-    # decisions), so neither is a held-out test any more. Real routed prompts in
-    # routing_log.jsonl are the honest test from here on.
-    summarize("NEW prompts (used for the v2 decisions)", [r for r in results if r["set"] == "new"])
-    summarize("ORIGINAL prompts (used for the v1 fixes)", [r for r in results if r["set"] == "original"])
-    summarize("ALL prompts", results)
-
-    print("\nConfusion, tier (expected -> final):", dict(Counter((r["expected_tier"], r["final_tier"]) for r in results)))
-    print("Confusion, action (expected -> final):", dict(Counter((r["expected_action"], r["final_action"]) for r in results)))
+    print_report(results, "ALL prompts")
     latencies = sorted(r["latency_s"] for r in results)
     print(f"Latency seconds: median {latencies[len(latencies) // 2]:.2f}, max {latencies[-1]:.2f}")
     tokens_in = sum(r["input_tokens"] or 0 for r in results)
@@ -200,7 +234,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--replay",
         nargs="?",
-        const="eval_results.csv",
+        const=str(HERE / "eval_results.csv"),
         default=None,
         metavar="FILE",
         help="Replay evaluation from saved results CSV without calling the API (default: eval_results.csv)",
@@ -211,11 +245,13 @@ def parse_args(argv=None):
 def main(argv=None):
     args = parse_args(argv)
     if args.replay:
-        replay(args.replay)
+        try:
+            replay(args.replay)
+        except (FileNotFoundError, ValueError) as err:
+            raise SystemExit(f"Replay stopped: {err}")
     else:
         run_eval()
 
 
 if __name__ == "__main__":
     main()
-
