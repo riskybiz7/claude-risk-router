@@ -1,6 +1,6 @@
 # Evaluation
 
-How the router is tested, what four evaluation runs showed, and what the numbers do and don't mean.
+How the router is tested, what five evaluation runs showed, and what the numbers do and don't mean.
 
 ## Method
 
@@ -8,7 +8,7 @@ How the router is tested, what four evaluation runs showed, and what the numbers
 
 | Test | What it checks | Cost |
 |---|---|---|
-| `python -m unittest` (32 tests) | The rules in `apply_policy()`, the override, and the hook's fail-safes, with Jev mocked out | Free |
+| `python -m unittest` (40 tests) | The rules in `apply_policy()`, the override, and the hook's fail-safes, with Jev mocked out | Free |
 | `python eval.py` | Jev + rules on labeled prompts: does the router agree with the owner's labels? | 1 TypeSafe call per prompt |
 
 **The labeled prompts** (`eval_prompts.csv`, 37 rows) are short, realistic requests written for
@@ -39,8 +39,8 @@ Replay grades against the current labels in `eval_prompts.csv`, writes no files,
 "Changed vs. the saved run" list: every prompt whose tier or hand-off decision differs from what
 that run decided. It refuses a file that lacks an answer the current rules use, rather than
 treating the missing answer as 0, which would switch a rule off and give scores that look
-comparable but aren't. Today only `eval_results.csv` (v4) has every answer; v1–v3 predate the
-capability, bulk-work or web-research questions.
+comparable but aren't. Today only v4 (`eval_results_v4.csv`) and v5 (`eval_results.csv`) have every answer; v1–v3 predate
+the capability, bulk-work or web-research questions.
 
 ## Results
 
@@ -52,11 +52,12 @@ Computed from each run's saved results file, scored against the labels stored in
 | v2 | 37 | 33/37 | 32/37 | 0 | 5 | 32/37 | 0 | 0.20 | 33,787 / 4,798 |
 | v3 | 37 | 33/37 | 33/37 | 0 | 4 | 33/37 | 0 | 0.20 | 34,157 / 4,799 |
 | v4 | 37 | 31/37 | 35/37 | 0 | 2 | 35/37 | 1 | 0.19 | 35,415 / 5,501 |
+| v5 | 37 | 33/37 | 32/37 | 0 | 5 | 33/37 | 1 | 0.22 | 35,415 / 5,502 |
 
-**Across all four runs, no task was ever routed below its label.** Every miss erred toward the more
+**Across all five runs, no task was ever routed below its label.** Every miss erred toward the more
 capable model.
 
-Files: `eval_results_v1.csv`, `eval_results_v2.csv`, `eval_results_v3.csv`, and `eval_results.csv` (v4).
+Files: `eval_results_v1.csv` to `eval_results_v4.csv`, and `eval_results.csv` (v5).
 
 ## What each run taught us
 
@@ -96,12 +97,32 @@ compared with a free replay of the v2 answers.
 | Extract figures from 40 CIMs | fixed | **Noise:** confidence 0.55 → 0.60, exactly the cutoff |
 | Restyle the charts | fixed | **Noise:** Jev's pick flipped between two near-tied options |
 
+**v5: a repeat run with no rule changes.** Run on 2026-10-01 after the free replay mode was merged
+(PRs #4 and #5); `router.py` was unchanged since v4. Replaying v4's answers with the same rules gives
+0 changed decisions, so every difference below is Jev's answers moving between identical calls.
+Three outcomes changed, all toward the more capable model:
+
+| Prompt | v4 → v5 | Cause |
+|---|---|---|
+| U.S. Physical Therapy acquisitions search | Sonnet, handed off → Opus, kept | **Noise:** confidence 0.61 → 0.59, across the 0.6 cutoff |
+| Extract figures from 40 CIMs | Sonnet, handed off → Opus, kept | **Noise:** confidence 0.60 → 0.55, and valuation driver 0.49 → 0.51, across the 0.5 cutoff |
+| Restyle the charts | Sonnet → Opus | **Noise:** Jev's pick flipped Haiku → Sonnet (confidence 0.32), then the low-confidence bump |
+
+Opus work is never handed off, so two of the three tier changes also became hand-off misses. Two of
+them (the 40 CIMs and the chart restyle) were v4's noise fixes: they sit on a cutoff and go either way. No rule was changed
+in response, by design (see below).
+
 ## Run-to-run noise
 
 Jev's answers vary slightly between identical calls. Comparing v3 with v4, on answers whose question
 wording didn't change (tier confidence, figure, ambiguity, valuation driver, capability):
 - The average absolute change was 0.025 or less, and the largest was 0.08.
 - Jev's tier pick flipped on 2 of 37 prompts, both near-ties (confidence about 0.25–0.30).
+
+Comparing v4 with v5 (no wording or rule changes in between), on all seven answers:
+- The average absolute change was 0.019 or less, and the largest was 0.07.
+- Jev's tier pick flipped on 2 of 37 prompts ("Restyle the charts" and the physician payment
+  summary), both near-ties (confidence 0.25–0.32).
 
 **What that means:** most routing decisions are stable, but a few sit within 0.05 of a cutoff and can
 go either way between runs. The wobble is only ever between "keep" and "hand off", or between Sonnet

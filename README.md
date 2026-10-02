@@ -114,7 +114,7 @@ In this folder:
 | `hook.py` | The Claude Code `UserPromptSubmit` hook: prefix, override tag, fail-safe, logging |
 | `test_policy.py` | 40 unit tests: `python -m unittest -v` (free) |
 | `eval.py`, `eval_prompts.csv` | Labeled eval: `python eval.py` (**paid**: one TypeSafe call per prompt), or `python eval.py --replay` (**free**: re-scores the saved run with the current rules) |
-| `eval_results*.csv` | Saved raw answers from runs v1–v4, for comparison and free replay |
+| `eval_results*.csv` | Saved raw answers from runs v1–v5, for comparison and free replay |
 | `routing_log.jsonl` | Every real routed prompt, with Jev's raw answers and any override (local only) |
 | `docs/` | Design, decision log, evaluation |
 | `claude-config/` | Copies of the Claude Code files the router needs: routing rules (`route.md`), the three tier subagents, and a settings excerpt |

@@ -4,7 +4,7 @@ Normal mode COSTS MONEY: one TypeSafe API call per row of eval_prompts.csv.
 Replay mode is FREE: re-runs apply_policy() on saved answers from a results CSV,
 grades against the current labels in eval_prompts.csv, writes no files, and lists
 the prompts whose decision changed. Only runs saved with every answer the current
-rules use can be replayed (today: eval_results.csv, the v4 run).
+rules use can be replayed (today: eval_results.csv and eval_results_v4.csv).
 
 Run from this folder:
   python eval.py                            # paid eval run via TypeSafe API
