@@ -24,7 +24,7 @@ work to cheaper subagents (Sonnet or Haiku).
 | **Safety rule** | When unsure, route **up**. A figure never comes from Haiku. Opus-tier work never leaves the main session |
 | **Latest eval (v5)** | 37 labeled prompts: tier 32/37, hand-off decision 33/37, **0 routed below label**. v4, with the same rules, scored 35/37 on both; the gap is Jev's run-to-run noise at the cutoffs, always toward the more capable model. 0 below label in all five runs |
 | **Routing cost** | 1 TypeSafe call per routed prompt (median 0.19 s in v4); unrouted prompts: hook exits in a median 38 ms and sends nothing |
-| **Tests** | 40 unit tests (free), plus a paid labeled eval with free offline replay |
+| **Tests** | 46 unit tests (free), plus a paid labeled eval with free offline replay |
 
 ## Where it helps
 
@@ -112,8 +112,8 @@ In this folder:
 |---|---|
 | `router.py` | The seven questions, the policy rules, the override, and the Jev API call |
 | `hook.py` | The Claude Code `UserPromptSubmit` hook: prefix, override tag, fail-safe, logging |
-| `test_policy.py` | 40 unit tests: `python -m unittest -v` (free) |
-| `eval.py`, `eval_prompts.csv` | Labeled eval: `python eval.py` (**paid**: one TypeSafe call per prompt), or `python eval.py --replay` (**free**: re-scores the saved run with the current rules) |
+| `test_policy.py` | 46 unit tests: `python -m unittest -v` (free) |
+| `eval.py`, `eval_prompts.csv` | Labeled eval: `python eval.py` (**paid**: one TypeSafe call per prompt), or `python eval.py --replay` (**free**: re-scores the saved run with the current rules; add `--set` to try other cutoffs, or use `/replay` in Claude Code) |
 | `eval_results*.csv` | Saved raw answers from runs v1–v5, for comparison and free replay |
 | `routing_log.jsonl` | Every real routed prompt, with Jev's raw answers and any override (local only) |
 | `docs/` | Design, decision log, evaluation |

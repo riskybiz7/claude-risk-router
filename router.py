@@ -54,6 +54,37 @@ BULK_THRESHOLD = 0.5
 # Likewise for web research across several pages.
 WEB_RESEARCH_THRESHOLD = 0.5
 
+
+@dataclass(frozen=True)
+class Rule:
+    """One cutoff that a free what-if replay can change (python eval.py --replay --set NAME=VALUE)."""
+
+    name: str  # the apply_policy() parameter it sets
+    label: str  # plain-English name for the /replay menu
+    group: str  # "tier" (moves a task up) or "hand-off" (sends it to a subagent)
+    default: float
+    low: float  # allowed range for a what-if value
+    high: float
+    description: str
+
+
+# Every cutoff in apply_policy(), for --list-rules and the /replay menu. Cutoff
+# parameters are named *_threshold, *_floor or *_cutoff; test_policy.py fails if
+# one is missing here, so a new rule can't be left out of the menu.
+RULES = [
+    Rule("trigger_threshold", "Escalation cutoff", "tier", TRIGGER_THRESHOLD, 0.0, 1.0,
+         "An escalation question (ambiguous method, valuation driver) fires at or above this and "
+         "bumps the task up a tier. Also where 'produces a figure' keeps work off Haiku."),
+    Rule("confidence_floor", "Low-confidence bump", "tier", CONFIDENCE_FLOOR, 0.0, 1.0,
+         "Jev's tier pick with confidence below this bumps the task up a tier."),
+    Rule("capability_cutoff", "Capability gate", "tier", CAPABILITY_CUTOFF, 0.0, 2.0,
+         "Open-ended work scoring at or above this (scale 0-2) can't go to Haiku."),
+    Rule("bulk_threshold", "Bulk-work hand-off", "hand-off", BULK_THRESHOLD, 0.0, 1.0,
+         "Below Opus, bulk work scoring at or above this is handed to a subagent."),
+    Rule("web_research_threshold", "Web-research hand-off", "hand-off", WEB_RESEARCH_THRESHOLD, 0.0, 1.0,
+         "Below Opus, multi-page web research scoring at or above this is handed to a subagent."),
+]
+
 # --------------------------------------------------------------------------
 # The questions Jev answers. All seven go in ONE request and are answered in
 # parallel; none of them can see the others' answers.

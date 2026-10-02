@@ -4,6 +4,7 @@ Run from this folder:  python -m unittest -v
 """
 
 import csv
+import inspect
 import io
 import json
 import sys
@@ -13,8 +14,8 @@ from contextlib import ExitStack
 from itertools import product
 from unittest import mock
 
-from eval import replay
-from router import TIERS, apply_override, apply_policy, format_note
+from eval import list_rules, main, parse_overrides, replay
+from router import RULES, TIERS, apply_override, apply_policy, format_note
 
 QUIET = {"produces_figure": 0.1, "ambiguous_method": 0.1, "valuation_driver": 0.1}
 
@@ -282,10 +283,10 @@ class ReplayTests(unittest.TestCase):
             writer.writerows(rows)
         return path
 
-    def run_replay(self, rows):
+    def run_replay(self, rows, overrides=None):
         out = io.StringIO()
         with mock.patch("sys.stdout", new=out):
-            results = replay(self.write_csv("run.csv", rows), self.labels)
+            results = replay(self.write_csv("run.csv", rows), self.labels, overrides)
         return results, out.getvalue()
 
     def test_replay_fixture_csv(self):
@@ -333,6 +334,64 @@ class ReplayTests(unittest.TestCase):
     def test_replay_missing_file_raises(self):
         with self.assertRaises(FileNotFoundError):
             replay("non_existent_results_file.csv")
+
+
+    # --- What-if replays (--set) ------------------------------------------
+
+    def test_set_changes_a_decision_for_this_replay_only(self):
+        # Made-up row 4 scores 0.70 on web research: handed off at today's 0.5, kept at 0.8.
+        results, out = self.run_replay(REPLAY_FIXTURE, {"web_research_threshold": 0.8})
+        self.assertEqual(results[3]["final_action"], "keep")
+        self.assertIn("WHAT-IF REPLAY: web_research_threshold 0.5 -> 0.8 (router.py unchanged)", out)
+        # The live default is untouched.
+        self.assertEqual(inspect.signature(apply_policy).parameters["web_research_threshold"].default, 0.5)
+
+    def test_set_without_replay_is_refused_before_any_call(self):
+        with mock.patch("eval.ask_jev", side_effect=AssertionError("must not call Jev")):
+            with self.assertRaises(SystemExit) as ctx:
+                main(["--set", "bulk_threshold=0.6"])
+        self.assertIn("--set only works with --replay", str(ctx.exception))
+
+
+class WhatIfRuleTests(unittest.TestCase):
+    """The rule list behind --set, --list-rules and the /replay menu."""
+
+    def test_every_cutoff_in_apply_policy_is_in_rules(self):
+        # If this fails, a cutoff was added to apply_policy() without a RULES entry
+        # in router.py, so it would be missing from the /replay menu.
+        params = inspect.signature(apply_policy).parameters
+        cutoffs = {n for n in params if n.endswith(("_threshold", "_floor", "_cutoff"))}
+        self.assertEqual(cutoffs, {rule.name for rule in RULES})
+        for rule in RULES:
+            self.assertEqual(rule.default, params[rule.name].default, rule.name)
+            self.assertIn(rule.group, ("tier", "hand-off"), rule.name)
+
+    def test_parse_overrides_reads_several(self):
+        self.assertEqual(
+            parse_overrides(["bulk_threshold=0.6", "confidence_floor = 0.55"]),
+            {"bulk_threshold": 0.6, "confidence_floor": 0.55},
+        )
+
+    def test_parse_overrides_rejects_bad_input(self):
+        cases = {
+            "web_reserch_threshold=0.8": "Rules you can set: trigger_threshold",  # misspelled
+            "bulk_threshold=1.2": "must be between 0 and 1",
+            "capability_cutoff=2.5": "must be between 0 and 2",
+            "bulk_threshold=high": "needs a number",
+            "bulk_threshold": "needs NAME=VALUE",
+        }
+        for pair, message in cases.items():
+            with self.subTest(pair=pair):
+                with self.assertRaises(ValueError) as ctx:
+                    parse_overrides([pair])
+                self.assertIn(message, str(ctx.exception))
+
+    def test_list_rules_shows_every_rule(self):
+        out = io.StringIO()
+        with mock.patch("sys.stdout", new=out):
+            list_rules()
+        for rule in RULES:
+            self.assertIn(f"({rule.name}): today {rule.default:g}", out.getvalue())
 
 
 if __name__ == "__main__":
