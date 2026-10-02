@@ -10,6 +10,8 @@ Run from this folder:
   python eval.py                            # paid eval run via TypeSafe API
   python eval.py --replay                   # free replay of eval_results.csv
   python eval.py --replay eval_results.csv  # free replay of a specific results CSV
+  python eval.py --list-rules               # every rule a what-if can change, with today's cutoff
+  python eval.py --replay --set web_research_threshold=0.8   # free what-if; router.py untouched
 
 eval_prompts.csv columns:
   expected_tier    lowest tier allowed to do the work (haiku / sonnet / opus)
@@ -25,7 +27,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from router import TIERS, TRIGGERS, apply_policy, ask_jev
+from router import RULES, TIERS, TRIGGERS, apply_policy, ask_jev
 
 HERE = Path(__file__).parent
 
@@ -103,12 +105,56 @@ REPLAY_COLUMNS = {
 }
 
 
-def replay(csv_path, labels_path=HERE / "eval_prompts.csv"):
+def parse_overrides(pairs):
+    """Turn ["web_research_threshold=0.8", ...] into {"web_research_threshold": 0.8}.
+
+    Rejects unknown rule names, non-numbers and values outside the rule's range,
+    rather than guessing.
+    """
+    rules = {rule.name: rule for rule in RULES}
+    overrides = {}
+    for pair in pairs or []:
+        name, sep, value = pair.partition("=")
+        name, value = name.strip(), value.strip()
+        if not sep or not name or not value:
+            raise ValueError(f"--set needs NAME=VALUE, got {pair!r}")
+        if name not in rules:
+            raise ValueError(f"unknown rule {name!r}. Rules you can set: {', '.join(rules)}")
+        try:
+            number = float(value)
+        except ValueError:
+            raise ValueError(f"{name} needs a number, got {value!r}") from None
+        rule = rules[name]
+        if not rule.low <= number <= rule.high:
+            raise ValueError(f"{name} must be between {rule.low:g} and {rule.high:g}, got {number:g}")
+        overrides[name] = number
+    return overrides
+
+
+def list_rules():
+    """Print every rule a what-if replay can change, grouped, with today's cutoff."""
+    for group, heading in [("tier", "Tier rules (move a task up)"), ("hand-off", "Hand-off rules (send it to a subagent)")]:
+        print(f"\n== {heading} ==")
+        for rule in RULES:
+            if rule.group == group:
+                print(f"{rule.label} ({rule.name}): today {rule.default:g}, allowed {rule.low:g}-{rule.high:g}")
+                print(f"    {rule.description}")
+
+
+def replay(csv_path, labels_path=HERE / "eval_prompts.csv", overrides=None):
     """Re-score a saved run with the current rules. FREE: no TypeSafe calls, writes no files.
 
     Uses Jev's saved answers from csv_path and the CURRENT labels from labels_path,
     and reports which prompts would now get a different tier or hand-off decision.
+    overrides ({rule name: cutoff}, from --set) changes cutoffs for this replay only;
+    router.py and the live router are untouched.
     """
+    overrides = overrides or {}
+    if overrides:
+        defaults = {rule.name: rule.default for rule in RULES}
+        changes = ", ".join(f"{name} {defaults[name]:g} -> {value:g}" for name, value in overrides.items())
+        print(f"WHAT-IF REPLAY: {changes} (router.py unchanged)\n")
+
     path = Path(csv_path)
     if not path.is_file():
         raise FileNotFoundError(f"Replay file not found: {csv_path}")
@@ -145,6 +191,7 @@ def replay(csv_path, labels_path=HERE / "eval_prompts.csv"):
             capability_score=float(row["capability_score"]),
             bulk_probability=float(row["bulk_work"]),
             web_research_probability=float(row["web_research"]),
+            **overrides,
         )
         result = {
             "set": label["set"],
@@ -239,14 +286,31 @@ def parse_args(argv=None):
         metavar="FILE",
         help="Replay evaluation from saved results CSV without calling the API (default: eval_results.csv)",
     )
+    parser.add_argument(
+        "--set",
+        action="append",
+        metavar="NAME=VALUE",
+        help="With --replay only: try a different cutoff for this replay (repeatable). See --list-rules",
+    )
+    parser.add_argument(
+        "--list-rules",
+        action="store_true",
+        help="List every rule --set can change, with today's cutoff, and exit",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv=None):
     args = parse_args(argv)
+    if args.list_rules:
+        list_rules()
+        return
+    if args.set and not args.replay:
+        # A paid run with what-if cutoffs would save results that don't match the real rules.
+        raise SystemExit("--set only works with --replay (a free what-if). The paid run always uses router.py's rules.")
     if args.replay:
         try:
-            replay(args.replay)
+            replay(args.replay, overrides=parse_overrides(args.set))
         except (FileNotFoundError, ValueError) as err:
             raise SystemExit(f"Replay stopped: {err}")
     else:

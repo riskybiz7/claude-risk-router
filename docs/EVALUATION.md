@@ -8,7 +8,7 @@ How the router is tested, what five evaluation runs showed, and what the numbers
 
 | Test | What it checks | Cost |
 |---|---|---|
-| `python -m unittest` (40 tests) | The rules in `apply_policy()`, the override, and the hook's fail-safes, with Jev mocked out | Free |
+| `python -m unittest` (46 tests) | The rules in `apply_policy()`, the override, and the hook's fail-safes, with Jev mocked out | Free |
 | `python eval.py` | Jev + rules on labeled prompts: does the router agree with the owner's labels? | 1 TypeSafe call per prompt |
 
 **The labeled prompts** (`eval_prompts.csv`, 37 rows) are short, realistic requests written for
@@ -41,6 +41,24 @@ that run decided. It refuses a file that lacks an answer the current rules use, 
 treating the missing answer as 0, which would switch a rule off and give scores that look
 comparable but aren't. Today only v4 (`eval_results_v4.csv`) and v5 (`eval_results.csv`) have every answer; v1–v3 predate
 the capability, bulk-work or web-research questions.
+
+**What-if replay.** Every cutoff can be changed for a single replay, without editing `router.py`, so
+the live router is never affected:
+
+```
+python eval.py --list-rules                                   # every rule, today's cutoff, allowed range
+python eval.py --replay --set web_research_threshold=0.7      # try one change (repeat --set for more)
+```
+
+In Claude Code, `/replay` does the same from a menu: pick rules, pick values, and get a plain-English
+before/after. The rule list lives in `router.py` (`RULES`), and a unit test fails if a cutoff in
+`apply_policy()` is missing from it, so new rules always appear in the menu. `--set` is refused
+without `--replay`: a paid run always uses the real rules.
+
+Example, on v4's answers: raising the web-research cutoff from 0.5 to 0.7 fixes one hand-off (the
+link check, 0.61, label: keep) and breaks another (the CMS price-transparency search, 0.62, label:
+hand off). Both scores stay at 35/37: a trade, not an improvement. The two prompts are 0.01 apart,
+so no cutoff separates them; that would take a change to the question's wording, and a paid run.
 
 ## Results
 
