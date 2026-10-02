@@ -22,9 +22,9 @@ work to cheaper subagents (Sonnet or Haiku).
 |---|---|
 | **Goal** | Use cheaper models only where they are safe *and* able, and hand off only where it saves usage |
 | **Safety rule** | When unsure, route **up**. A figure never comes from Haiku. Opus-tier work never leaves the main session |
-| **Latest eval (v4)** | 37 labeled prompts: tier 35/37, hand-off decision 35/37, **0 routed below label** |
+| **Latest eval (v5)** | 37 labeled prompts: tier 32/37, hand-off decision 33/37, **0 routed below label**. v4, with the same rules, scored 35/37 on both; the gap is Jev's run-to-run noise at the cutoffs, always toward the more capable model. 0 below label in all five runs |
 | **Routing cost** | 1 TypeSafe call per routed prompt (median 0.19 s in v4); unrouted prompts: hook exits in a median 38 ms and sends nothing |
-| **Tests** | 32 unit tests (free), plus a paid labeled eval with free offline replay |
+| **Tests** | 40 unit tests (free), plus a paid labeled eval with free offline replay |
 
 ## Where it helps
 
